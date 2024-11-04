@@ -36,17 +36,60 @@ kick_message = "You have been kicked from the server. If you think this is a mis
 warn_message = "You have been warned in the server. If you think this is a mistake, pleas contact a server administrator."
 
 #ban command and dm they the ban message and log in THCHANNEL AS embeded message and say the reasin for banned
-@bot.command()
-async def ban(ctx, member: discord.Member, *, reason=None):
-    if any(role.id in ban_roles for role in ctx.message.author.roles):
-        await member.ban(reason=reason)
-        await ctx.send(f"{member} has been banned.")
-        await ctx.send(ban_message)
-        channel = bot.get_channel(log_channel)
-        embed = discord.Embed(title="Ban", description=f"{member} has been banned by {ctx.message.author} for {reason}", color=0xff0000)
-        await channel.send(embed=embed)
-    else:
-        await ctx.send("You do not have permission to use this command.")
+
+@bot.command(name="ban")
+async def ban(ctx, user: discord.User, *, reason=None):
+            guild = ctx.guild
+            author = ctx.author
+
+            # Check if the user has one of the allowed roles
+            if not any(role.id in ban_roles for role in author.roles):
+                await ctx.send("You do not have permission to use this command.")
+                return
+
+            try:
+                # Fetch the member and proceed with banning
+                member = await guild.fetch_member(user.id)
+
+                # Ban the member
+                await guild.ban(member, reason=reason)
+
+                # DM the user about the ban
+                dm_message = f"You have been banned from {guild.name}."
+                if reason:
+                    dm_message += f"\nReason: {reason}"
+                try:
+                    await user.send(dm_message)
+                except discord.Forbidden:
+                    await ctx.send("Unable to DM the user. They may have DMs disabled.")
+
+                # Log the ban in a specific channel
+                log_channel = discord.utils.get(guild.text_channels, name="THCHANNEL")  # Replace with your log channel's name
+                if log_channel:
+                    embed = discord.Embed(title="User Banned", color=discord.Color.red())
+                    embed.add_field(name="User", value=f"{user} (ID: {user.id})", inline=False)
+                    embed.add_field(name="Banned by", value=ctx.author.mention, inline=False)
+                    if reason:
+                        embed.add_field(name="Reason", value=reason, inline=False)
+                    await log_channel.send(embed=embed)
+                await ctx.send(f"{user} has been banned.")
+
+            except discord.NotFound:
+                await ctx.send("User not found.")
+            except discord.Forbidden:
+                await ctx.send("I do not have permission to ban this user.")
+            except Exception as e:
+                await ctx.send(f"An error occurred: {e}")
+
+        # Error handling for missing permissions or arguments
+@ban.error
+async def ban_error(ctx, error):
+            if isinstance(error, commands.MissingPermissions):
+                await ctx.send("You don't have permission to ban members.")
+            elif isinstance(error, commands.MissingRequiredArgument):
+                await ctx.send("Please mention the user or provide their ID, and a reason if needed.")
+            elif isinstance(error, commands.BadArgument):
+                await ctx.send("Invalid user. Please mention a valid user or provide their ID.")
 
 #kick command and dm them the kick message and log in THCHANNEL AS embeded message and say the
 @bot.command()
